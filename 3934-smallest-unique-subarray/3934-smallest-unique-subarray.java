@@ -3,86 +3,188 @@ import java.util.*;
 
 class Solution {
 
-    static final long MOD1 = 1_000_000_007L;
-    static final long MOD2 = 1_000_000_009L;
-    static final long BASE = 131L;
-
     public int smallestUniqueSubarray(int[] nums) {
 
         int n = nums.length;
 
-        long[] h1 = new long[n + 1];
-        long[] h2 = new long[n + 1];
+        // Step 1: Build Suffix Array
+        int[] sa = buildSuffixArray(nums);
 
-        long[] p1 = new long[n + 1];
-        long[] p2 = new long[n + 1];
+        // Step 2: Build Rank Array
+        int[] rank = new int[n];
 
-        p1[0] = 1;
-        p2[0] = 1;
+        for (int i = 0; i < n; i++) {
+            rank[sa[i]] = i;
+        }
+
+        // Step 3: Build LCP Array using Kasai's Algorithm
+        int[] lcp = new int[n];
+
+        int k = 0;
 
         for (int i = 0; i < n; i++) {
 
-            h1[i + 1] =
-                (h1[i] * BASE + nums[i]) % MOD1;
+            int r = rank[i];
 
-            h2[i + 1] =
-                (h2[i] * BASE + nums[i]) % MOD2;
+            if (r == 0) {
+                k = 0;
+                continue;
+            }
 
-            p1[i + 1] = (p1[i] * BASE) % MOD1;
-            p2[i + 1] = (p2[i] * BASE) % MOD2;
+            int j = sa[r - 1];
+
+            while (i + k < n &&
+                   j + k < n &&
+                   nums[i + k] == nums[j + k]) {
+                k++;
+            }
+
+            lcp[r] = k;
+
+            if (k > 0) {
+                k--;
+            }
         }
 
-        int left = 1;
-        int right = n;
+        // Step 4: Find Minimum Unique Subarray Length
         int ans = n;
 
-        while (left <= right) {
+        for (int r = 0; r < n; r++) {
 
-            int mid = left + (right - left) / 2;
+            int maxLCP = lcp[r];
 
-            if (hasUnique(nums, mid, h1, h2, p1, p2)) {
-                ans = mid;
-                right = mid - 1;
-            } else {
-                left = mid + 1;
+            if (r + 1 < n) {
+                maxLCP = Math.max(maxLCP, lcp[r + 1]);
+            }
+
+            int uniqueLength = maxLCP + 1;
+
+            // Check if enough elements are available
+            int remainingLength = n - sa[r];
+
+            if (uniqueLength <= remainingLength) {
+                ans = Math.min(ans, uniqueLength);
             }
         }
 
         return ans;
     }
 
-    private boolean hasUnique(
-        int[] nums,
-        int len,
-        long[] h1,
-        long[] h2,
-        long[] p1,
-        long[] p2
-    ) {
-
-        Map<String, Integer> freq = new HashMap<>();
+    // Build Suffix Array using Doubling + Counting Sort
+    private int[] buildSuffixArray(int[] nums) {
 
         int n = nums.length;
+        int N = n + 1;
 
-        for (int i = 0; i + len <= n; i++) {
+        int[] s = new int[N];
 
-            long x = (h1[i + len]
-                - h1[i] * p1[len] % MOD1 + MOD1) % MOD1;
-
-            long y = (h2[i + len]
-                - h2[i] * p2[len] % MOD2 + MOD2) % MOD2;
-
-            String key = x + "#" + y;
-
-            freq.put(key, freq.getOrDefault(key, 0) + 1);
+        for (int i = 0; i < n; i++) {
+            s[i] = nums[i] + 1;
         }
 
-        for (int count : freq.values()) {
-            if (count == 1) {
-                return true;
+        // Sentinel (smallest element)
+        s[n] = 0;
+
+        int[] p = new int[N];
+        int[] c = new int[N];
+
+        int[] cnt = new int[Math.max(100002, N)];
+
+        // Initial Sorting
+        for (int x : s) {
+            cnt[x]++;
+        }
+
+        for (int i = 1; i < cnt.length; i++) {
+            cnt[i] += cnt[i - 1];
+        }
+
+        for (int i = N - 1; i >= 0; i--) {
+            p[--cnt[s[i]]] = i;
+        }
+
+        // Initial Equivalence Classes
+        c[p[0]] = 0;
+
+        int classes = 1;
+
+        for (int i = 1; i < N; i++) {
+
+            if (s[p[i]] != s[p[i - 1]]) {
+                classes++;
+            }
+
+            c[p[i]] = classes - 1;
+        }
+
+        int[] pn = new int[N];
+        int[] cn = new int[N];
+
+        // Doubling Algorithm
+        for (int len = 1; len < N; len *= 2) {
+
+            for (int i = 0; i < N; i++) {
+
+                pn[i] = p[i] - len;
+
+                if (pn[i] < 0) {
+                    pn[i] += N;
+                }
+            }
+
+            Arrays.fill(cnt, 0);
+
+            for (int i = 0; i < N; i++) {
+                cnt[c[pn[i]]]++;
+            }
+
+            for (int i = 1; i < classes; i++) {
+                cnt[i] += cnt[i - 1];
+            }
+
+            for (int i = N - 1; i >= 0; i--) {
+
+                int x = pn[i];
+
+                p[--cnt[c[x]]] = x;
+            }
+
+            cn[p[0]] = 0;
+
+            int newClasses = 1;
+
+            for (int i = 1; i < N; i++) {
+
+                int cur = p[i];
+                int prev = p[i - 1];
+
+                int midCur = (cur + len) % N;
+                int midPrev = (prev + len) % N;
+
+                if (c[cur] != c[prev] ||
+                    c[midCur] != c[midPrev]) {
+
+                    newClasses++;
+                }
+
+                cn[cur] = newClasses - 1;
+            }
+
+            c = cn.clone();
+            classes = newClasses;
+
+            if (classes == N) {
+                break;
             }
         }
 
-        return false;
+        // Remove Sentinel Suffix
+        int[] sa = new int[n];
+
+        for (int i = 0; i < n; i++) {
+            sa[i] = p[i + 1];
+        }
+
+        return sa;
     }
 }
